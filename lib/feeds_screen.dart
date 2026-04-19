@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import 'widgets/top_header.dart';
-import 'widgets/category_section.dart';
-import 'services/post_service.dart';
-import 'package:intl/intl.dart';
-import 'widgets/post_detail_dialog.dart';
+
+class Post {
+  final String content;
+  bool isLiked;
+
+  Post({required this.content, this.isLiked = false});
+}
 
 class FeedsScreen extends StatefulWidget {
   const FeedsScreen({super.key});
@@ -13,171 +15,135 @@ class FeedsScreen extends StatefulWidget {
 }
 
 class _FeedsScreenState extends State<FeedsScreen> {
-  final _postService = PostService();
+  List<Post> _allPosts = [];
+  List<Post> _filteredPosts = [];
+  String _searchQuery = '';
+
+  Future<List<Post>> fetchPosts() async {
+    await Future.delayed(const Duration(seconds: 1));
+    return [
+      Post(content: "This is my first post! Flutter is awesome 🚀"),
+      Post(content: "Exploring new UI designs today."),
+      Post(content: "Machine Learning project going well!"),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFFE3F2FD), Color(0xFFF5F5F5)],
-        ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Feeds"),
+        backgroundColor: Colors.orangeAccent,
       ),
-      child: SafeArea(
-        child: Column(
-          children: [
-            const TopHeader(title: 'Feeds'),
-            // Search Bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const TextField(
-                  decoration: InputDecoration(
-                    icon: Icon(Icons.search, color: Colors.orangeAccent),
-                    hintText: 'Search',
-                    border: InputBorder.none,
-                  ),
-                ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: TextField(
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
+              decoration: const InputDecoration(
+                icon: Icon(Icons.search, color: Colors.orangeAccent),
+                hintText: 'Search posts...',
+                border: InputBorder.none,
               ),
             ),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: () async {
-                  setState(() {});
-                },
-                child: FutureBuilder<List<Post>>(
-                  future: _postService.fetchPosts(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator(color: Colors.orangeAccent));
-                    }
-                    if (snapshot.hasError) {
-                      return Center(child: Text('Error: ${snapshot.error}'));
-                    }
-                    final posts = snapshot.data ?? [];
-                    
-                    return SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
+          ),
+          Expanded(
+            child: FutureBuilder<List<Post>>(
+              future: fetchPosts(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (snapshot.hasData) {
+                  _allPosts = snapshot.data!;
+                  _filteredPosts = _allPosts.where((post) {
+                    return post.content
+                        .toLowerCase()
+                        .contains(_searchQuery.toLowerCase());
+                  }).toList();
+                }
+
+                if (_filteredPosts.isEmpty) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(40.0),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const SizedBox(height: 8),
-                          const CategorySection(),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                            child: Row(
-                              children: [
-                                _FeedTab(label: 'Posts', active: true),
-                                SizedBox(width: 12),
-                                _FeedTab(label: 'Videos'),
-                                SizedBox(width: 12),
-                                _FeedTab(label: 'Community'),
-                              ],
-                            ),
+                          Icon(Icons.hourglass_empty,
+                              size: 50, color: Colors.grey),
+                          SizedBox(height: 10),
+                          Text(
+                            'No posts found',
+                            style: TextStyle(color: Colors.black38),
                           ),
-                          if (posts.isEmpty)
-                            const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(40.0),
-                                child: Text('No posts yet. Be the first to post!', style: TextStyle(color: Colors.black38)),
-                              ),
-                            )
-                          else
-                            ...posts.map((post) => _buildFeedItem(post)),
-                          const SizedBox(height: 100),
                         ],
                       ),
-                    );
+                    ),
+                  );
+                }
+
+                return RefreshIndicator(
+                  onRefresh: () async {
+                    await Future.delayed(const Duration(seconds: 1));
+                    setState(() {});
                   },
-                ),
-              ),
+                  child: ListView.builder(
+                    itemCount: _filteredPosts.length,
+                    itemBuilder: (context, index) {
+                      return _buildFeedItem(_filteredPosts[index]);
+                    },
+                  ),
+                );
+              },
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildFeedItem(Post post) {
-    return GestureDetector(
-      onTap: () => PostDetailDialog.show(context, post),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20)],
-        ),
+    return Card(
+      margin: const EdgeInsets.all(10),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            ExpandableText(post.content),
+            const SizedBox(height: 10),
             Row(
               children: [
-                CircleAvatar(
-                  backgroundImage: post.userAvatar != null 
-                      ? NetworkImage(post.userAvatar!) 
-                      : const NetworkImage('https://i.pravatar.cc/150?img=12'),
-                ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(post.userName ?? 'User', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    Text(
-                      '${post.location ?? "Unknown Location"} • ${DateFormat('dd MMM, yyyy').format(post.createdAt)}',
-                      style: const TextStyle(color: Colors.black38, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (post.imageUrl != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.network(
-                  post.imageUrl!,
-                  height: 200,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    height: 200,
-                    width: double.infinity,
-                    color: Colors.grey[200],
-                    child: const Icon(Icons.image, color: Colors.grey, size: 50),
+                IconButton(
+                  icon: Icon(
+                    post.isLiked
+                        ? Icons.favorite
+                        : Icons.favorite_border,
+                    color: post.isLiked ? Colors.red : Colors.black45,
                   ),
+                  onPressed: () {
+                    setState(() {
+                      post.isLiked = !post.isLiked;
+                    });
+                  },
                 ),
-              ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Row(
-                  children: [
-                    Icon(Icons.favorite_border, color: Colors.black45),
-                    SizedBox(width: 20),
-                    Icon(Icons.chat_bubble_outline, color: Colors.black45),
-                    SizedBox(width: 20),
-                    Icon(Icons.bookmark_border, color: Colors.black45),
-                  ],
-                ),
-                IconButton(onPressed: () {}, icon: const Icon(Icons.share_outlined, color: Colors.black45)),
+                const SizedBox(width: 10),
+                const Icon(Icons.chat_bubble_outline,
+                    color: Colors.black45),
+                const SizedBox(width: 20),
+                const Icon(Icons.bookmark_border,
+                    color: Colors.black45),
               ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              post.content,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.black87, height: 1.4),
             ),
           ],
         ),
@@ -186,24 +152,38 @@ class _FeedsScreenState extends State<FeedsScreen> {
   }
 }
 
-class _FeedTab extends StatelessWidget {
-  final String label;
-  final bool active;
-  const _FeedTab({required this.label, this.active = false});
+class ExpandableText extends StatefulWidget {
+  final String text;
+  const ExpandableText(this.text, {super.key});
+
+  @override
+  State<ExpandableText> createState() => _ExpandableTextState();
+}
+
+class _ExpandableTextState extends State<ExpandableText> {
+  bool expanded = false;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-      decoration: BoxDecoration(
-        color: active ? Colors.orangeAccent : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [if (!active) BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
-      ),
-      child: Text(
-        label,
-        style: TextStyle(color: active ? Colors.white : Colors.black45, fontWeight: FontWeight.bold),
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.text,
+          maxLines: expanded ? null : 3,
+          overflow: expanded
+              ? TextOverflow.visible
+              : TextOverflow.ellipsis,
+          style: const TextStyle(color: Colors.black87),
+        ),
+        GestureDetector(
+          onTap: () => setState(() => expanded = !expanded),
+          child: Text(
+            expanded ? "Show less" : "Read more",
+            style: const TextStyle(color: Colors.orangeAccent),
+          ),
+        )
+      ],
     );
   }
 }
