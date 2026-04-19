@@ -14,10 +14,15 @@ class ShopScreen extends StatefulWidget {
 class _ShopScreenState extends State<ShopScreen> {
   final _productService = ProductService();
   final _cartService = CartService();
-  
+
   String _activeTab = 'All Products';
   bool _isLoading = true;
   List<Product> _products = [];
+
+  // ✅ NEW
+  String _searchQuery = '';
+  bool _showHighRatedOnly = false;
+  int _cartCount = 0;
 
   @override
   void initState() {
@@ -29,12 +34,24 @@ class _ShopScreenState extends State<ShopScreen> {
     setState(() => _isLoading = true);
     try {
       List<Product> products;
+
       if (_activeTab == 'All Products') {
         products = await _productService.fetchProducts();
       } else {
         products = await _productService.fetchMyProducts();
       }
-      
+
+      // 🔍 Search filter
+      if (_searchQuery.isNotEmpty) {
+        products = products.where((p) =>
+            p.name.toLowerCase().contains(_searchQuery.toLowerCase())).toList();
+      }
+
+      // ⭐ Rating filter
+      if (_showHighRatedOnly) {
+        products = products.where((p) => p.rating >= 4).toList();
+      }
+
       setState(() {
         _products = products;
         _isLoading = false;
@@ -52,6 +69,11 @@ class _ShopScreenState extends State<ShopScreen> {
   Future<void> _addToCart(Product product) async {
     try {
       await _cartService.addToCart(product);
+
+      setState(() {
+        _cartCount++;
+      });
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -61,7 +83,8 @@ class _ShopScreenState extends State<ShopScreen> {
               label: 'View Cart',
               textColor: Colors.white,
               onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const CartPage()));
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (context) => const CartPage()));
               },
             ),
           ),
@@ -70,7 +93,9 @@ class _ShopScreenState extends State<ShopScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Cart Error: $e'), backgroundColor: Colors.redAccent),
+          SnackBar(
+              content: Text('Cart Error: $e'),
+              backgroundColor: Colors.redAccent),
         );
       }
     }
@@ -93,17 +118,45 @@ class _ShopScreenState extends State<ShopScreen> {
               title: 'Shop',
               showBackButton: false,
               actions: [
-                IconButton(
-                  onPressed: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (context) => const CartPage()));
-                  }, 
-                  icon: const Icon(Icons.shopping_bag_outlined, color: Color(0xFF455A64))
+                // 🛒 Cart with badge
+                Stack(
+                  children: [
+                    IconButton(
+                      onPressed: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) => const CartPage()));
+                      },
+                      icon: const Icon(Icons.shopping_bag_outlined,
+                          color: Color(0xFF455A64)),
+                    ),
+                    if (_cartCount > 0)
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '$_cartCount',
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 10),
+                          ),
+                        ),
+                      )
+                  ],
                 ),
               ],
             ),
-            // Search & Filter
+
+            // 🔍 Search + Filter
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
               child: Row(
                 children: [
                   Expanded(
@@ -113,9 +166,14 @@ class _ShopScreenState extends State<ShopScreen> {
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: const TextField(
-                        decoration: InputDecoration(
-                          icon: Icon(Icons.search, color: Colors.orangeAccent),
+                      child: TextField(
+                        onChanged: (value) {
+                          _searchQuery = value;
+                          _loadProducts();
+                        },
+                        decoration: const InputDecoration(
+                          icon: Icon(Icons.search,
+                              color: Colors.orangeAccent),
                           hintText: 'Search',
                           border: InputBorder.none,
                         ),
@@ -123,20 +181,39 @@ class _ShopScreenState extends State<ShopScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
+
+                  // ⭐ Filter Button
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _showHighRatedOnly = !_showHighRatedOnly;
+                      });
+                      _loadProducts();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: _showHighRatedOnly
+                            ? Colors.orangeAccent
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Icon(
+                        Icons.filter_list,
+                        color: _showHighRatedOnly
+                            ? Colors.white
+                            : Colors.black45,
+                      ),
                     ),
-                    child: const Icon(Icons.filter_list, color: Colors.black45),
                   ),
                 ],
               ),
             ),
-            // Shop Tabs (Refactored to 2 Tabs)
+
+            // Tabs
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               child: Row(
                 children: [
                   _buildTab('All Products'),
@@ -145,17 +222,22 @@ class _ShopScreenState extends State<ShopScreen> {
                 ],
               ),
             ),
+
             Expanded(
               child: RefreshIndicator(
                 onRefresh: _loadProducts,
                 color: Colors.orangeAccent,
                 child: _isLoading
-                    ? const Center(child: CircularProgressIndicator(color: Colors.orangeAccent))
+                    ? const Center(
+                        child: CircularProgressIndicator(
+                            color: Colors.orangeAccent))
                     : _products.isEmpty
                         ? _buildEmptyState()
                         : GridView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
-                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 24),
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: 2,
                               mainAxisSpacing: 16,
                               crossAxisSpacing: 16,
@@ -163,11 +245,13 @@ class _ShopScreenState extends State<ShopScreen> {
                             ),
                             itemCount: _products.length,
                             itemBuilder: (context, index) {
-                              return _buildProductCard(_products[index]);
+                              return _buildProductCard(
+                                  _products[index]);
                             },
                           ),
               ),
             ),
+
             const SizedBox(height: 100),
           ],
         ),
@@ -182,9 +266,16 @@ class _ShopScreenState extends State<ShopScreen> {
         const Center(
           child: Column(
             children: [
-              Icon(Icons.inventory_2_outlined, size: 64, color: Colors.black12),
+              Icon(Icons.inventory_2_outlined,
+                  size: 64, color: Colors.black12),
               SizedBox(height: 16),
-              Text('No products found', style: TextStyle(color: Colors.black26, fontSize: 16, fontWeight: FontWeight.bold)),
+              Text(
+                'No products found',
+                style: TextStyle(
+                    color: Colors.black26,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold),
+              ),
             ],
           ),
         ),
@@ -205,7 +296,8 @@ class _ShopScreenState extends State<ShopScreen> {
           Text(
             label,
             style: TextStyle(
-              color: active ? const Color(0xFF455A64) : Colors.black26,
+              color:
+                  active ? const Color(0xFF455A64) : Colors.black26,
               fontWeight: FontWeight.bold,
               fontSize: 16,
             ),
@@ -227,21 +319,27 @@ class _ShopScreenState extends State<ShopScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15)],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.04), blurRadius: 15)
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(24)),
               child: Image.network(
                 product.imageUrl,
                 fit: BoxFit.cover,
                 width: double.infinity,
-                errorBuilder: (context, error, stackTrace) => Container(
+                errorBuilder: (context, error, stackTrace) =>
+                    Container(
                   color: Colors.grey[200],
-                  child: const Icon(Icons.image, color: Colors.grey, size: 40),
+                  child: const Icon(Icons.image,
+                      color: Colors.grey, size: 40),
                 ),
               ),
             ),
@@ -253,30 +351,50 @@ class _ShopScreenState extends State<ShopScreen> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.star, color: Colors.orangeAccent, size: 14),
+                    const Icon(Icons.star,
+                        color: Colors.orangeAccent, size: 14),
                     const SizedBox(width: 4),
-                    Text('${product.rating}', style: const TextStyle(fontSize: 12, color: Colors.black45)),
+                    Text('${product.rating}',
+                        style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.black45)),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  product.name, 
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  product.name,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                Text(product.location, style: const TextStyle(fontSize: 11, color: Colors.black26)),
+                Text(product.location,
+                    style: const TextStyle(
+                        fontSize: 11, color: Colors.black26)),
                 const SizedBox(height: 8),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('View Details', style: TextStyle(color: Colors.orangeAccent, fontSize: 12, decoration: TextDecoration.underline)),
+                    const Text('View Details',
+                        style: TextStyle(
+                            color: Colors.orangeAccent,
+                            fontSize: 12,
+                            decoration:
+                                TextDecoration.underline)),
                     GestureDetector(
                       onTap: () => _addToCart(product),
                       child: Container(
                         padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(color: Colors.orangeAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                        child: const Icon(Icons.shopping_basket_outlined, color: Colors.orangeAccent, size: 18),
+                        decoration: BoxDecoration(
+                            color: Colors.orangeAccent
+                                .withOpacity(0.1),
+                            borderRadius:
+                                BorderRadius.circular(8)),
+                        child: const Icon(
+                            Icons.shopping_basket_outlined,
+                            color: Colors.orangeAccent,
+                            size: 18),
                       ),
                     ),
                   ],
